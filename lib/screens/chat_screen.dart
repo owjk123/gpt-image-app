@@ -106,7 +106,9 @@ class _ChatScreenState extends State<ChatScreen> {
     
     // 更新标题
     if (_currentSession!.title == '新对话' && text.isNotEmpty) {
-      _currentSession!.title = text.length > 20 ? '${text.substring(0, 20)}...' : text;
+      _currentSession = _currentSession!.copyWith(
+        title: text.length > 20 ? '${text.substring(0, 20)}...' : text,
+      );
     }
     
     _scrollToBottom();
@@ -134,7 +136,7 @@ class _ChatScreenState extends State<ChatScreen> {
       
       setState(() {
         _currentSession!.messages.add(aiMessage);
-        _currentSession!.updatedAt = DateTime.now();
+        _currentSession = _currentSession!.copyWith(updatedAt: DateTime.now());
         _isLoading = false;
       });
       
