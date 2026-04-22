@@ -39,9 +39,9 @@ class _InputBarState extends State<InputBar> {
     
     final XFile? image = await _picker.pickImage(
       source: ImageSource.gallery,
-      maxWidth: 1024,
-      maxHeight: 1024,
-      imageQuality: 85,
+      maxWidth: 800,
+      maxHeight: 800,
+      imageQuality: 70,
     );
     if (image != null) {
       final bytes = await image.readAsBytes();

@@ -15,41 +15,6 @@ class ApiService {
     required String newPrompt,
     List<String>? attachedImages,
   }) async {
-    Exception? lastError;
-    
-    for (int attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        print('=== API Request (Attempt $attempt/$maxRetries) ===');
-        return await _sendRequest(history, newPrompt, attachedImages);
-      } catch (e) {
-        lastError = Exception(e.toString());
-        print('Attempt $attempt failed: $e');
-        
-        // 如果是最后一次尝试，或者不是网络错误，直接抛出
-        if (attempt == maxRetries || !_isRetryableError(e.toString())) {
-          rethrow;
-        }
-        
-        // 等待后重试
-        await Future.delayed(Duration(seconds: attempt * 2));
-      }
-    }
-    
-    throw lastError ?? Exception('未知错误');
-  }
-  
-  bool _isRetryableError(String error) {
-    return error.contains('connection abort') ||
-           error.contains('timeout') ||
-           error.contains('SocketException') ||
-           error.contains('Connection closed');
-  }
-  
-  Future<String?> _sendRequest(
-    List<Message> history,
-    String newPrompt,
-    List<String>? attachedImages,
-  ) async {
     // 构建消息历史
     final messages = <Map<String, dynamic>>[];
     
@@ -71,7 +36,6 @@ class ApiService {
           messages.add({'role': 'user', 'content': msg.text});
         }
       } else {
-        // AI消息：不重复发送
         if (msg.imageUrl != null) {
           continue;
         } else if (msg.text != null && msg.text!.isNotEmpty) {
@@ -96,42 +60,50 @@ class ApiService {
       messages.add({'role': 'user', 'content': newPrompt});
     }
     
-    print('Endpoint: ${AppConfig.apiEndpoint}');
-    print('Model: ${AppConfig.model}');
+    print('=== API Request ===');
     print('Messages: ${messages.length}');
     
-    final request = http.Request('POST', Uri.parse(AppConfig.apiEndpoint));
-    request.headers['Authorization'] = 'Bearer $apiKey';
-    request.headers['Content-Type'] = 'application/json';
-    request.body = jsonEncode({
-      'model': AppConfig.model,
-      'messages': messages,
-    });
-    
-    final client = http.Client();
+    // 使用普通POST请求而不是流式
     try {
-      final streamedResponse = await client.send(request).timeout(
-        Duration(seconds: 180),
-      );
+      final response = await http.post(
+        Uri.parse(AppConfig.apiEndpoint),
+        headers: {
+          'Authorization': 'Bearer $apiKey',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'model': AppConfig.model,
+          'messages': messages,
+        }),
+      ).timeout(Duration(seconds: 180));
       
-      final response = await http.Response.fromStream(streamedResponse).timeout(
-        Duration(seconds: 180),
-      );
-      
+      print('=== API Response ===');
       print('Status: ${response.statusCode}');
       
+      final bodyStr = utf8.decode(response.bodyBytes);
+      print('Body length: ${bodyStr.length}');
+      
       if (response.statusCode == 200) {
-        final data = jsonDecode(utf8.decode(response.bodyBytes));
+        final data = jsonDecode(bodyStr);
         
-        if (data['choices'] == null || (data['choices'] as List).isEmpty) {
-          throw Exception('API返回数据格式错误：无choices');
+        if (data['choices'] == null) {
+          print('No choices in response');
+          print('Full response: $bodyStr');
+          throw Exception('API返回格式错误');
         }
         
-        final content = data['choices'][0]['message']['content'];
+        final choices = data['choices'] as List;
+        if (choices.isEmpty) {
+          print('Empty choices');
+          throw Exception('API返回空结果');
+        }
+        
+        final content = choices[0]['message']['content'];
         print('Content: $content');
         
         if (content == null) {
-          throw Exception('API返回content为空');
+          print('Content is null');
+          throw Exception('API返回空内容');
         }
         
         final contentStr = content.toString();
@@ -139,39 +111,49 @@ class ApiService {
         // 解析 ![image](URL) 格式
         final match = RegExp(r'!\[.*?\]\((https?://[^)]+)\)').firstMatch(contentStr);
         if (match != null) {
-          return match.group(1);
+          final url = match.group(1)!;
+          print('Found image URL: $url');
+          return url;
         }
         
         // 尝试直接URL
-        final urlMatch = RegExp(r'https?://\S+\.(png|jpg|jpeg|webp)').firstMatch(contentStr);
+        final urlMatch = RegExp(r'https?://[^\s)"\'\]]+').firstMatch(contentStr);
         if (urlMatch != null) {
-          return urlMatch.group(0);
+          final url = urlMatch.group(0)!;
+          print('Found direct URL: $url');
+          return url;
         }
         
-        // 尝试base64
+        // base64
         if (contentStr.contains('data:image')) {
+          print('Found base64 image');
           return contentStr;
         }
         
-        throw Exception('未找到图片URL');
+        print('No image found in: $contentStr');
+        throw Exception('未找到图片');
       } else {
-        final error = jsonDecode(utf8.decode(response.bodyBytes));
-        throw Exception(error['error']?['message'] ?? '请求失败 (${response.statusCode})');
+        final error = jsonDecode(bodyStr);
+        throw Exception(error['error']?['message'] ?? '请求失败');
       }
     } on SocketException catch (e) {
-      throw Exception('网络连接失败: ${e.message}');
+      print('SocketException: $e');
+      throw Exception('网络错误: ${e.message}');
     } on HttpException catch (e) {
+      print('HttpException: $e');
       throw Exception('HTTP错误: ${e.message}');
     } catch (e) {
-      if (e.toString().contains('timeout') || e.toString().contains('TimeoutException')) {
-        throw Exception('请求超时，API响应时间较长');
+      print('Exception: $e');
+      final errStr = e.toString();
+      if (errStr.contains('timeout') || errStr.contains('TimeoutException')) {
+        throw Exception('请求超时');
       }
-      if (e.toString().contains('connection abort') || e.toString().contains('Connection closed')) {
-        throw Exception('连接中断，请检查网络后重试');
+      if (errStr.contains('connection abort') || 
+          errStr.contains('Connection closed') ||
+          errStr.contains('SocketException')) {
+        throw Exception('网络连接中断');
       }
       rethrow;
-    } finally {
-      client.close();
     }
   }
 }
