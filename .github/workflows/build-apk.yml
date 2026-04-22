@@ -1,0 +1,41 @@
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Clone Flutter SDK
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+          
+      - name: Install Dependencies
+        run: |
+          flutter pub get
+          
+      - name: Build APK (Release)
+        run: |
+          flutter build apk --release
+          
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          
+      - name: Create Download Link
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          echo "APK build completed!"
+          echo "Download link: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
