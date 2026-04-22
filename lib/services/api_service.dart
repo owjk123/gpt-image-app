@@ -108,7 +108,7 @@ class ApiService {
         }
         
         // 尝试直接URL
-        final urlMatch = RegExp(r'https?://[^\s)"\']+\.(?:png|jpg|jpeg|webp)').firstMatch(contentStr);
+        final urlMatch = RegExp(r'https?://[^\s)\"\']+\.(png|jpg|jpeg|webp)').firstMatch(contentStr);
         if (urlMatch != null) {
           print('Direct URL: ${urlMatch.group(0)}');
           return urlMatch.group(0);
