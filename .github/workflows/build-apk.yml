@@ -27,16 +27,17 @@ jobs:
           
       - name: Build APK (Release)
         run: |
-          flutter build apk --release
+          flutter build apk --release 2>&1
           
       - name: Upload APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: release-apk
           path: build/app/outputs/flutter-apk/app-release.apk
           
       - name: Create Download Link
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: success()
         run: |
-          echo "APK build completed!"
+          echo "APK build completed successfully!"
           echo "Download link: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
