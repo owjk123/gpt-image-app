@@ -117,11 +117,13 @@ class ApiService {
         }
         
         // 尝试直接URL
-        final urlMatch = RegExp(r'https?://[^\s)"\'\]]+').firstMatch(contentStr);
+        final urlMatch = RegExp(r'https?://\S+').firstMatch(contentStr);
         if (urlMatch != null) {
           final url = urlMatch.group(0)!;
-          print('Found direct URL: $url');
-          return url;
+          // 去掉末尾可能的标点
+          final cleanUrl = url.replaceAll(RegExp(r'[\)\]"\'\s]+$'), '');
+          print('Found direct URL: $cleanUrl');
+          return cleanUrl;
         }
         
         // base64
